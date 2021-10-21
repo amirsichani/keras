@@ -844,6 +844,38 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self._validate_target_and_loss(y, loss)
     # Run backwards pass.
     self.optimizer.minimize(loss, self.trainable_variables, tape=tape)
+    return self.compute_metrics(x, y, y_pred, sample_weight)
+
+  def compute_metrics(self, x, y, y_pred, sample_weight):
+    """Update metric states and collect all metrics to be returned.
+
+    Subclasses can optionally override this method to provide custom metric
+    updating and collection logic.
+
+    Example:
+    ```python
+    class MyModel(sequential.Sequential):
+
+      def compute_metrics(self, x, y, y_pred, sample_weight):
+        metric_results = super(MyModel, self).compute_metrics(
+            x, y, y_pred, sample_weight)
+        self.custom_metric.update_state(x, y, y_pred, sample_weight)
+        metric_results['custom_metric_name'] = self.custom_metric.result()
+        return metric_results
+    ```
+
+    Args:
+      x: Input data.
+      y: Target data.
+      y_pred: Predicted result with `x`.
+      sample_weight: Sample weights for weighting the loss function.
+
+    Returns:
+      A `dict` containing values that will be passed to
+      `tf.keras.callbacks.CallbackList.on_train_batch_end`. Typically, the
+      values of the `Model`'s metrics are returned. Example:
+      `{'loss': 0.2, 'accuracy': 0.7}`.
+    """
     self.compiled_metrics.update_state(y, y_pred, sample_weight)
     # Collect metrics to return
     return_metrics = {}
@@ -1360,16 +1392,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     # Updates stateful loss metrics.
     self.compiled_loss(
         y, y_pred, sample_weight, regularization_losses=self.losses)
-    self.compiled_metrics.update_state(y, y_pred, sample_weight)
-    # Collect metrics to return
-    return_metrics = {}
-    for metric in self.metrics:
-      result = metric.result()
-      if isinstance(result, dict):
-        return_metrics.update(result)
-      else:
-        return_metrics[metric.name] = result
-    return return_metrics
+    return self.compute_metrics(x, y, y_pred, sample_weight)
 
   def make_test_function(self, force=False):
     """Creates a function that executes one step of evaluation.
